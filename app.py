@@ -55,10 +55,10 @@ print("[OK] All models loaded successfully.")
 # CONSTANTS
 # ─────────────────────────────────────────────
 
-FEATURES      = ["heart_rate_bpm", "body_temperature_c", "spo2_percent", "rmssd_ms"]
+FEATURES      = ["heart_rate_bpm", "body_temperature_c", "spo2_percent"]
 WINDOW_SIZE   = 10
 
-# 16 trend features (4 stats × 4 sensors) — must match train_model.py
+# 16 trend features (4 stats × 3 sensors) — must match train_model.py
 TREND_FEATURES = [
     f"{feat}_{stat}"
     for feat in FEATURES
@@ -141,8 +141,8 @@ def predict_single(data: dict) -> dict:
 
 def compute_trend_features(readings: list) -> np.ndarray:
     """
-    From a list of 10 dicts (each with the 4 sensor values),
-    compute the 16 trend features used by Model 2 and Model 3.
+    From a list of 10 dicts (each with the 3 sensor values),
+    compute the 12 trend features used by Model 2 and Model 3.
     """
     feats = []
     x = np.arange(len(readings))
@@ -201,7 +201,6 @@ def predict():
         "heart_rate_bpm": 110,
         "body_temperature_c": 38.9,
         "spo2_percent": 94.0,
-        "rmssd_ms": 0.0
     }
 
     Response :
@@ -235,8 +234,8 @@ def predict_trend():
     Body JSON :
     {
         "readings": [
-            {"heart_rate_bpm": 80, "body_temperature_c": 37.0, "spo2_percent": 97, "rmssd_ms": 40},
-            {"heart_rate_bpm": 83, "body_temperature_c": 37.1, "spo2_percent": 97, "rmssd_ms": 38},
+            {"heart_rate_bpm": 80, "body_temperature_c": 37.0, "spo2_percent": 97},
+            {"heart_rate_bpm": 83, "body_temperature_c": 37.1, "spo2_percent": 97},
             ... (10 readings total)
         ]
     }
@@ -252,7 +251,6 @@ def predict_trend():
             "heart_rate_bpm":    {"slope": +2.5,  "direction": "increasing", "mean": 88.0},
             "body_temperature_c":{"slope": +0.05, "direction": "stable",     "mean": 37.2},
             "spo2_percent":      {"slope": -0.3,  "direction": "decreasing", "mean": 96.1},
-            "rmssd_ms":          {"slope": 0.0,   "direction": "stable",     "mean": 0.0}
         },
         "warning_signs": ["Heart rate is gradually increasing"],
         "timestamp": "..."
@@ -355,8 +353,8 @@ def predict_batch():
     Body JSON :
     {
         "measurements": [
-            {"heart_rate_bpm": 85, "body_temperature_c": 36.6, "spo2_percent": 97, "rmssd_ms": 42},
-            {"heart_rate_bpm": 120, "body_temperature_c": 38.9, "spo2_percent": 94, "rmssd_ms": 0}
+            {"heart_rate_bpm": 85, "body_temperature_c": 36.6, "spo2_percent": 97},
+            {"heart_rate_bpm": 120, "body_temperature_c": 38.9, "spo2_percent": 94}
         ]
     }
     """

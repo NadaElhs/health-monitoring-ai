@@ -5,7 +5,7 @@
   Three models are trained and saved :
 
   MODEL 1 — Health Status Classifier
-    Input  : 1 measurement (heart_rate, temperature, spo2, rmssd)
+    Input  : 1 measurement (heart_rate, temperature, spo2)
     Output : Normal / Fever / Bradycardia / Tachycardia / Critical
     Files  : health_model.pkl + label_encoder.pkl
 
@@ -46,7 +46,6 @@ FEATURES = [
     "heart_rate_bpm",
     "body_temperature_c",
     "spo2_percent",
-    "rmssd_ms",
 ]
 TARGET = "clinical_label"
 
