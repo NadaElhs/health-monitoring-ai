@@ -17,4 +17,4 @@ python app.py
 ## Main endpoint
 
 POST /predict
-Body: { "heart_rate_bpm": 110, "body_temperature_c": 38.9, "spo2_percent": 94.0, "rmssd_ms": 0.0 }
+Body: { "heart_rate_bpm": 110, "body_temperature_c": 38.9, "spo2_percent": 94.0 }
