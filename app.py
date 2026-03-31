@@ -2,8 +2,11 @@
 =============================================================
   AI-Based Health Monitoring System — Flask API
 =============================================================
+  Live API : https://nadaelh.pythonanywhere.com
+
   Endpoints :
 
+  GET  /                    → API info
   GET  /health              → API status check
   GET  /classes             → List of all possible labels
 
@@ -11,7 +14,44 @@
   POST /predict/trend       → Risk prediction from last 10 readings
   POST /predict/batch       → Batch predictions (up to 100)
 
-  Request examples are shown in the docstring of each endpoint.
+=============================================================
+  HOW TO INTEGRATE (for frontend/backend teammate)
+=============================================================
+
+  After receiving data from ESP32, call :
+
+  POST https://nadaelh.pythonanywhere.com/predict
+  Body: {
+      "heart_rate_bpm": 75,
+      "body_temperature_c": 37.0,
+      "spo2_percent": 97.0
+  }
+
+  Response: {
+      "prediction": "Normal",       <- display this on dashboard
+      "severity": "low",            <- use for color coding (low/medium/high)
+      "confidence": 0.97,           <- how sure the model is
+      "alerts": [],                 <- list of medical alerts if any
+      "timestamp": "..."
+  }
+
+  For trend analysis (after accumulating 10 readings) :
+
+  POST https://nadaelh.pythonanywhere.com/predict/trend
+  Body: {
+      "readings": [
+          {"heart_rate_bpm": 80, "body_temperature_c": 37.0, "spo2_percent": 97},
+          ... (10 readings total)
+      ]
+  }
+
+  Response: {
+      "risk_level": "low",          <- overall risk (low/medium/high)
+      "anomaly_detected": false,    <- unusual pattern flag
+      "warning_signs": [...],       <- human readable warnings
+      "trends": {...}               <- direction of each vital
+  }
+
 =============================================================
 """
 
@@ -55,10 +95,10 @@ print("[OK] All models loaded successfully.")
 # CONSTANTS
 # ─────────────────────────────────────────────
 
-FEATURES      = ["heart_rate_bpm", "body_temperature_c", "spo2_percent"]
-WINDOW_SIZE   = 10
+FEATURES    = ["heart_rate_bpm", "body_temperature_c", "spo2_percent"]
+WINDOW_SIZE = 10
 
-# 16 trend features (4 stats × 3 sensors) — must match train_model.py
+# 12 trend features (4 stats x 3 sensors) — must match train_model.py
 TREND_FEATURES = [
     f"{feat}_{stat}"
     for feat in FEATURES
@@ -76,9 +116,9 @@ SEVERITY_MAP = {
 
 # Hard medical thresholds — rule-based safety net
 ALERT_RULES = {
-    "heart_rate_bpm":    {"min": 40,   "max": 180,  "msg": "Heart rate out of safe range"},
-    "body_temperature_c":{"min": 35.0, "max": 40.0, "msg": "Body temperature abnormal"},
-    "spo2_percent":      {"min": 88.0, "max": 100.0,"msg": "Critical SpO2 — hypoxia risk"},
+    "heart_rate_bpm":     {"min": 40,   "max": 180,   "msg": "Heart rate out of safe range"},
+    "body_temperature_c": {"min": 35.0, "max": 40.0,  "msg": "Body temperature abnormal"},
+    "spo2_percent":       {"min": 88.0, "max": 100.0, "msg": "Critical SpO2 — hypoxia risk"},
 }
 
 # ─────────────────────────────────────────────
@@ -157,6 +197,24 @@ def compute_trend_features(readings: list) -> np.ndarray:
 # ENDPOINTS
 # ─────────────────────────────────────────────
 
+@app.route("/", methods=["GET"])
+def index():
+    """Root — API info and available endpoints."""
+    return jsonify({
+        "name":        "Health Monitoring AI API",
+        "version":     "1.0",
+        "status":      "online",
+        "live_api":    "https://nadaelh.pythonanywhere.com",
+        "endpoints": {
+            "health_check":   "GET  /health",
+            "classify":       "POST /predict",
+            "trend_analysis": "POST /predict/trend",
+            "batch":          "POST /predict/batch",
+            "classes":        "GET  /classes",
+        }
+    })
+
+
 @app.route("/health", methods=["GET"])
 def health_check():
     """API status — quick ping to verify the server is running."""
@@ -200,7 +258,7 @@ def predict():
     {
         "heart_rate_bpm": 110,
         "body_temperature_c": 38.9,
-        "spo2_percent": 94.0,
+        "spo2_percent": 94.0
     }
 
     Response :
@@ -239,22 +297,6 @@ def predict_trend():
             ... (10 readings total)
         ]
     }
-
-    Response :
-    {
-        "risk_level": "medium",
-        "risk_confidence": 0.89,
-        "risk_probabilities": {"high": 0.05, "low": 0.06, "medium": 0.89},
-        "anomaly_detected": false,
-        "anomaly_score": 0.12,
-        "trends": {
-            "heart_rate_bpm":    {"slope": +2.5,  "direction": "increasing", "mean": 88.0},
-            "body_temperature_c":{"slope": +0.05, "direction": "stable",     "mean": 37.2},
-            "spo2_percent":      {"slope": -0.3,  "direction": "decreasing", "mean": 96.1},
-        },
-        "warning_signs": ["Heart rate is gradually increasing"],
-        "timestamp": "..."
-    }
     """
     data = request.get_json()
     if not data or "readings" not in data:
@@ -262,7 +304,6 @@ def predict_trend():
 
     readings = data["readings"]
 
-    # Validate window size
     if not isinstance(readings, list):
         return jsonify({"error": "'readings' must be a list"}), 422
     if len(readings) != WINDOW_SIZE:
@@ -270,16 +311,14 @@ def predict_trend():
             "error": f"Exactly {WINDOW_SIZE} readings required, got {len(readings)}"
         }), 422
 
-    # Validate each reading
     for i, reading in enumerate(readings):
         is_valid, error_msg = validate_input(reading)
         if not is_valid:
             return jsonify({"error": f"Reading {i}: {error_msg}"}), 422
 
-    # Compute 16 trend features
     trend_feats = compute_trend_features(readings)
 
-    # ── Model 2 : Risk prediction ──
+    # Model 2 : Risk prediction
     risk_idx     = trend_model.predict(trend_feats)[0]
     risk_proba   = trend_model.predict_proba(trend_feats)[0]
     risk_label   = trend_encoder.inverse_transform([risk_idx])[0]
@@ -289,12 +328,12 @@ def predict_trend():
         for cls, p in zip(trend_encoder.classes_, risk_proba)
     }
 
-    # ── Model 3 : Anomaly detection ──
-    iso_flag     = iso_forest.predict(trend_feats)[0]      # -1=anomaly, 1=normal
-    iso_score    = float(iso_forest.decision_function(trend_feats)[0])
-    anomaly_det  = bool(iso_flag == -1)
+    # Model 3 : Anomaly detection
+    iso_flag    = iso_forest.predict(trend_feats)[0]
+    iso_score   = float(iso_forest.decision_function(trend_feats)[0])
+    anomaly_det = bool(iso_flag == -1)
 
-    # ── Trend analysis per feature ──
+    # Trend analysis per feature
     x = np.arange(WINDOW_SIZE)
     trends = {}
     warning_signs = []
@@ -303,7 +342,6 @@ def predict_trend():
         vals  = np.array([float(r[feat]) for r in readings])
         slope = np.polyfit(x, vals, 1)[0]
 
-        # Direction label
         if slope > 0.5:
             direction = "increasing"
         elif slope < -0.5:
@@ -318,7 +356,6 @@ def predict_trend():
             "last":      round(float(vals[-1]), 2),
         }
 
-        # Generate human-readable warning signs
         if feat == "heart_rate_bpm" and direction == "increasing" and vals[-1] > 90:
             warning_signs.append("Heart rate is gradually increasing")
         if feat == "heart_rate_bpm" and direction == "decreasing" and vals[-1] < 65:
@@ -332,15 +369,15 @@ def predict_trend():
         warning_signs.append("Unusual pattern detected in the last 10 readings")
 
     return jsonify({
-        "risk_level":          risk_label,
-        "risk_confidence":     round(risk_conf, 4),
-        "risk_probabilities":  risk_proba_d,
-        "anomaly_detected":    anomaly_det,
-        "anomaly_score":       round(iso_score, 4),
-        "trends":              trends,
-        "warning_signs":       warning_signs,
-        "readings_analyzed":   WINDOW_SIZE,
-        "timestamp":           datetime.utcnow().isoformat() + "Z",
+        "risk_level":         risk_label,
+        "risk_confidence":    round(risk_conf, 4),
+        "risk_probabilities": risk_proba_d,
+        "anomaly_detected":   anomaly_det,
+        "anomaly_score":      round(iso_score, 4),
+        "trends":             trends,
+        "warning_signs":      warning_signs,
+        "readings_analyzed":  WINDOW_SIZE,
+        "timestamp":          datetime.utcnow().isoformat() + "Z",
     }), 200
 
 
